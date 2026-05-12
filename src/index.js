@@ -1,8 +1,9 @@
 // src/index.js
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
-import { upload, deleteImage } from './cloudinary.js';
+import { upload, uploadToCloudinary, deleteImage } from './cloudinary.js';
 
 const app  = express();
 const db   = new PrismaClient();
@@ -37,21 +38,50 @@ app.get('/api/photos', async (_req, res) => {
 app.post('/api/photos/:key', upload.single('file'), async (req, res) => {
   try {
     const { key } = req.params;
-    if (!['photo1', 'photo2'].includes(key)) return err(res, 'Invalid key', 400);
-    if (!req.file) return err(res, 'No file uploaded', 400);
 
-    // If replacing, delete the old Cloudinary asset
-    const existing = await db.photo.findUnique({ where: { key } });
-    if (existing?.pubId) await deleteImage(existing.pubId);
+    if (!['photo1', 'photo2'].includes(key)) {
+      return err(res, 'Invalid key', 400);
+    }
 
-    const photo = await db.photo.upsert({
-      where:  { key },
-      create: { key, url: req.file.path, pubId: req.file.filename },
-      update: { url: req.file.path, pubId: req.file.filename },
+    if (!req.file) {
+      return err(res, 'No file uploaded', 400);
+    }
+
+    // upload image to Cloudinary
+    const result = await uploadToCloudinary(req.file.path);
+
+    // delete old image if exists
+    const existing = await db.photo.findUnique({
+      where: { key },
     });
 
-    ok(res, { url: photo.url });
-  } catch (e) { err(res, e.message); }
+    if (existing?.pubId) {
+      await deleteImage(existing.pubId);
+    }
+
+    // save/update DB
+    const photo = await db.photo.upsert({
+      where: { key },
+
+      create: {
+        key,
+        url: result.secure_url,
+        pubId: result.public_id,
+      },
+
+      update: {
+        url: result.secure_url,
+        pubId: result.public_id,
+      },
+    });
+
+    ok(res, {
+      url: photo.url,
+    });
+
+  } catch (e) {
+    err(res, e.message);
+  }
 });
 
 // ─────────────────────────────────────────────
@@ -123,8 +153,15 @@ app.post('/api/memories', upload.single('img'), async (req, res) => {
     const { title, date = '', story = '' } = req.body;
     if (!title) return err(res, 'title is required', 400);
 
-    const imgUrl   = req.file ? req.file.path     : null;
-    const imgPubId = req.file ? req.file.filename  : null;
+    let imgUrl = null;
+    let imgPubId = null;
+
+    if (req.file) {
+      const result = await uploadToCloudinary(req.file.path);
+
+      imgUrl = result.secure_url;
+      imgPubId = result.public_id;
+    }
 
     const mem = await db.memory.create({
       data: { title, date, story, imgUrl, imgPubId },

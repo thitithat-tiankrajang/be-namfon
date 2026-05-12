@@ -1,0 +1,43 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model CalEvent {
+  dateKey   String   @id @map("date_key")   // "YYYY-MM-DD" — primary key
+  type      String                           // "busy" | "free" | "date" | "special"
+  name      String   @default("")
+  note      String   @default("")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("cal_events")
+}
+
+model Memory {
+  id        Int      @id @default(autoincrement())
+  title     String
+  date      String   @default("")           // stored as "YYYY-MM-DD" string
+  story     String   @default("")
+  imgUrl    String?  @map("img_url")        // Cloudinary URL — nullable
+  imgPubId  String?  @map("img_pub_id")     // Cloudinary public_id for deletion
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("memories")
+}
+
+model Photo {
+  key       String   @id                    // "photo1" | "photo2"
+  url       String                          // Cloudinary secure URL
+  pubId     String   @map("pub_id")         // Cloudinary public_id for deletion
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("photos")
+}
